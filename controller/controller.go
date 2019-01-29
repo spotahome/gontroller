@@ -248,7 +248,7 @@ func (c *Controller) processObject(objectID string) (err error) {
 	// What's the status of the object? We allow enqueuing when finished.
 	startStoreGet := time.Now()
 	status, ok := c.objectCache.Get(objectID)
-	c.metricssvc.ObserveControllerStoreGetLatency(startStoreGet, ok)
+	c.metricssvc.ObserveControllerStorageGetLatency(startStoreGet, ok)
 	if !ok {
 		c.logger.Errorf("%s object status not present in cache", objectID)
 		return nil
