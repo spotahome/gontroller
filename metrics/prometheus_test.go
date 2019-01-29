@@ -1,0 +1,204 @@
+package metrics_test
+
+import (
+	"io/ioutil"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/stretchr/testify/assert"
+
+	"github.com/spotahome/gontroller/metrics"
+)
+
+func TestPrometheusRecorder(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name       string
+		addMetrics func(metricssvc metrics.Recorder)
+		expMetrics []string
+	}{
+		{
+			name: "Measuring controller queue metrics should generate the correct metrics.",
+			addMetrics: func(svc metrics.Recorder) {
+				svc.ObserveControllerOnQueueLatency(now.Add(-1 * time.Second))
+				svc.ObserveControllerOnQueueLatency(now.Add(-6 * time.Second))
+				svc.ObserveControllerOnQueueLatency(now.Add(-55 * time.Millisecond))
+
+			},
+			expMetrics: []string{
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="0.005"} 0`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="0.01"} 0`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="0.025"} 0`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="0.05"} 0`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="0.1"} 1`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="0.25"} 1`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="0.5"} 1`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="1"} 1`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="2.5"} 2`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="5"} 2`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="10"} 3`,
+				`gontroller_controller_queued_duration_seconds_bucket{controller="",le="+Inf"} 3`,
+				`gontroller_controller_queued_duration_seconds_count{controller=""} 3`,
+			},
+		},
+		{
+			name: "Measuring controller listerwatcher list metrics should generate the correct metrics.",
+			addMetrics: func(svc metrics.Recorder) {
+				svc.ObserveControllerListLatency(now.Add(-1*time.Second), true)
+				svc.ObserveControllerListLatency(now.Add(-6*time.Second), false)
+				svc.ObserveControllerListLatency(now.Add(-55*time.Millisecond), true)
+
+			},
+			expMetrics: []string{
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="0.005"}`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="0.01"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="0.025"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="0.05"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="0.1"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="0.25"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="0.5"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="1"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="2.5"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="5"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="10"} 1`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="false",le="+Inf"} 1`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_count{controller="",success="false"} 1`,
+
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="0.005"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="0.01"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="0.025"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="0.05"} 0`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="0.1"} 1`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="0.25"} 1`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="0.5"} 1`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="1"} 1`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="2.5"} 2`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="5"} 2`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="10"} 2`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_bucket{controller="",success="true",le="+Inf"} 2`,
+				`gontroller_controller_listerwatcher_list_duration_seconds_count{controller="",success="true"} 2`,
+			},
+		},
+		{
+			name: "Measuring controller storage get metrics should generate the correct metrics.",
+			addMetrics: func(svc metrics.Recorder) {
+				svc.ObserveControllerStorageGetLatency(now.Add(-1*time.Second), true)
+				svc.ObserveControllerStorageGetLatency(now.Add(-6*time.Second), false)
+				svc.ObserveControllerStorageGetLatency(now.Add(-55*time.Millisecond), true)
+
+			},
+			expMetrics: []string{
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="0.005"}`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="0.01"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="0.025"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="0.05"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="0.1"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="0.25"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="0.5"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="1"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="2.5"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="5"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="10"} 1`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="false",le="+Inf"} 1`,
+				`gontroller_controller_storage_get_duration_seconds_count{controller="",success="false"} 1`,
+
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="0.005"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="0.01"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="0.025"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="0.05"} 0`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="0.1"} 1`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="0.25"} 1`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="0.5"} 1`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="1"} 1`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="2.5"} 2`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="5"} 2`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="10"} 2`,
+				`gontroller_controller_storage_get_duration_seconds_bucket{controller="",success="true",le="+Inf"} 2`,
+				`gontroller_controller_storage_get_duration_seconds_count{controller="",success="true"} 2`,
+			},
+		},
+		{
+			name: "Measuring controller handle metrics should generate the correct metrics.",
+			addMetrics: func(svc metrics.Recorder) {
+				svc.ObserveControllerHandleLatency(now.Add(-1*time.Second), "kind1", true)
+				svc.ObserveControllerHandleLatency(now.Add(-55*time.Millisecond), "kind1", false)
+				svc.ObserveControllerHandleLatency(now.Add(-6*time.Second), "kind2", true)
+				svc.ObserveControllerHandleLatency(now.Add(-1*time.Millisecond), "kind2", true)
+				svc.ObserveControllerHandleLatency(now.Add(-9*time.Second), "kind2", true)
+
+			},
+			expMetrics: []string{
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="0.005"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="0.01"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="0.025"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="0.05"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="0.1"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="0.25"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="0.5"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="1"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="2.5"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="5"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="10"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="false",le="+Inf"} 1`,
+				`gontroller_controller_handle_duration_seconds_count{controller="",kind="kind1",success="false"} 1`,
+
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="0.005"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="0.01"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="0.025"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="0.05"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="0.1"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="0.25"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="0.5"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="1"} 0`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="2.5"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="5"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="10"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind1",success="true",le="+Inf"} 1`,
+				`gontroller_controller_handle_duration_seconds_count{controller="",kind="kind1",success="true"} 1`,
+
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="0.005"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="0.01"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="0.025"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="0.05"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="0.1"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="0.25"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="0.5"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="1"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="2.5"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="5"} 1`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="10"} 3`,
+				`gontroller_controller_handle_duration_seconds_bucket{controller="",kind="kind2",success="true",le="+Inf"} 3`,
+				`gontroller_controller_handle_duration_seconds_count{controller="",kind="kind2",success="true"} 3`,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert := assert.New(t)
+
+			// Create the prometheus registry and metrics Recorder.
+			reg := prometheus.NewRegistry()
+			svc := metrics.NewPrometheus(reg)
+
+			// Measure.
+			test.addMetrics(svc)
+
+			// Get the metrics from Prometheus.
+			h := promhttp.HandlerFor(reg, promhttp.HandlerOpts{})
+			w := httptest.NewRecorder()
+			r := httptest.NewRequest("GET", "/metrics", nil)
+			h.ServeHTTP(w, r)
+
+			// Check the obtained metrics
+			metrics, _ := ioutil.ReadAll(w.Result().Body)
+			for _, expMetric := range test.expMetrics {
+				assert.Contains(string(metrics), expMetric)
+			}
+		})
+	}
+}
