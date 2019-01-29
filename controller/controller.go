@@ -246,9 +246,7 @@ func (c *Controller) processObject(objectID string) (err error) {
 	defer c.objectLock.release(objectID)
 
 	// What's the status of the object? We allow enqueuing when finished.
-	startStoreGet := time.Now()
 	status, ok := c.objectCache.Get(objectID)
-	c.metricssvc.ObserveControllerStorageGetLatency(startStoreGet, ok)
 	if !ok {
 		c.logger.Errorf("%s object status not present in cache", objectID)
 		return nil
@@ -256,25 +254,35 @@ func (c *Controller) processObject(objectID string) (err error) {
 
 	defer c.objectCache.Delete(objectID)
 
-	// Observe metrics of handling the object.
-	defer func(start time.Time) {
-		c.metricssvc.ObserveControllerHandleLatency(start, string(status), err == nil)
-	}(time.Now())
-
 	// Call the handler logic.
 	switch status {
 	case objectStatusMissing:
+		// Measure handling.
+		defer func(start time.Time) {
+			c.metricssvc.ObserveControllerHandleLatency(start, metrics.DeleteHandleKind, err == nil)
+		}(time.Now())
+
 		return c.handler.Delete(context.Background(), objectID)
 	case objectStatusPresent:
+		// Get the object data from the storage.
+		startStoreGet := time.Now()
 		object, err := c.storage.Get(objectID)
+		c.metricssvc.ObserveControllerStorageGetLatency(startStoreGet, err == nil)
 		if err != nil {
 			return err
 		}
+
+		// If no object and no error means that the store wants to ignore the
+		// handling of this object.
 		if object == nil {
 			c.logger.Debugf("object %s has been ignored by the store", objectID)
 			return nil
 		}
-		return c.handler.Add(context.Background(), object)
+
+		startHandle := time.Now()
+		err = c.handler.Add(context.Background(), object)
+		c.metricssvc.ObserveControllerHandleLatency(startHandle, metrics.AddHandleKind, err == nil)
+		return err
 	default:
 		return fmt.Errorf("unknown object status kind: %s", status)
 	}
@@ -295,6 +303,8 @@ func (c *Controller) enqueueObject(objectID string, status objectStatus) {
 	// object to process multiple times.
 	if !ok {
 		go func() {
+			c.metricssvc.IncControllerQueuedTotal()
+
 			// When finishing this func we measure the latency of being consumed a.k.a the
 			// time spent on the queue.
 			defer func(start time.Time) {
