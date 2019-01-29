@@ -56,13 +56,13 @@ Check the [examples] folder to get an Idea of how you could create an operator/c
 2. The enqueuer will enqueue the object if necessary
    1. The enqueue will check if the ID is already on the internal state cache. If is there it will not send the ID to the queue, if its not there it will send to the controller queue.
    2. It will save new state (present or deleted) of the ID on the internal state cache.
-3. The Queue has FIFO priority.
+3. The queue has FIFO priority.
 4. The processor will process the queued IDs
-   4.1 Will check the internal lock to know if is already being handled. If not it will acquire the lock.
-   4.2 Will get from the `Storage` the object data based on the ID.
-   4.3 Will get the latest state of the object form the State cache.
-   4.4 Will call the handler using one of the workers and pass the object, if the latest state is present it will call `Handler.Add`, if is missing it will call `Handler.Delete`.
-   4.5 When the worker/`Handler` finishes it will release the lock.
+   1. Will check the internal lock to know if is already being handled. If not it will acquire the lock.
+   2. Will get from the `Storage` the object data based on the ID.
+   3. Will get the latest state of the object form the State cache.
+   4. Will call the handler using one of the workers and pass the object, if the latest state is present it will call `Handler.Add`, if is missing it will call `Handler.Delete`.
+   5. When the worker/`Handler` finishes it will release the lock.
 5. The `Handler` will execute the business logic for the object.
 
 ## FAQ
