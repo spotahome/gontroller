@@ -12,6 +12,8 @@ const (
 )
 
 type prometheusRecorder struct {
+	ctrlDequeuedCnt    *prometheus.CounterVec
+	ctrlQueuedCnt      *prometheus.CounterVec
 	ctrlQueuedHist     *prometheus.HistogramVec
 	ctrlStorageRetHist *prometheus.HistogramVec
 	ctrlListHist       *prometheus.HistogramVec
@@ -25,6 +27,21 @@ type prometheusRecorder struct {
 // as the metrics backend.
 func NewPrometheus(reg prometheus.Registerer) Recorder {
 	p := &prometheusRecorder{
+		ctrlQueuedCnt: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsPrefix,
+			Subsystem: "controller",
+			Name:      "queue_queued_total",
+			Help:      "The total number of queued objects on the queue.",
+		}, []string{"controller"}),
+
+		// Handy redundant metric (queued time histogram has also the counter).
+		ctrlDequeuedCnt: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: metricsPrefix,
+			Subsystem: "controller",
+			Name:      "queue_dequeued_total",
+			Help:      "The total number of dequeued objects from the queue.",
+		}, []string{"controller"}),
+
 		ctrlQueuedHist: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: metricsPrefix,
 			Subsystem: "controller",
@@ -67,6 +84,8 @@ func NewPrometheus(reg prometheus.Registerer) Recorder {
 
 func (p prometheusRecorder) registerMetrics() {
 	p.reg.MustRegister(
+		p.ctrlQueuedCnt,
+		p.ctrlDequeuedCnt,
 		p.ctrlQueuedHist,
 		p.ctrlListHist,
 		p.ctrlStorageRetHist,
@@ -76,6 +95,8 @@ func (p prometheusRecorder) registerMetrics() {
 
 func (p prometheusRecorder) WithID(id string) Recorder {
 	return &prometheusRecorder{
+		ctrlQueuedCnt:      p.ctrlQueuedCnt,
+		ctrlDequeuedCnt:    p.ctrlDequeuedCnt,
 		ctrlQueuedHist:     p.ctrlQueuedHist,
 		ctrlStorageRetHist: p.ctrlStorageRetHist,
 		ctrlListHist:       p.ctrlListHist,
@@ -85,7 +106,12 @@ func (p prometheusRecorder) WithID(id string) Recorder {
 	}
 }
 
+func (p prometheusRecorder) IncControllerQueuedTotal() {
+	p.ctrlQueuedCnt.WithLabelValues(p.controllerID).Inc()
+}
+
 func (p prometheusRecorder) ObserveControllerOnQueueLatency(start time.Time) {
+	p.ctrlDequeuedCnt.WithLabelValues(p.controllerID).Inc()
 	p.ctrlQueuedHist.WithLabelValues(p.controllerID).Observe(time.Since(start).Seconds())
 }
 
@@ -97,6 +123,6 @@ func (p prometheusRecorder) ObserveControllerListLatency(start time.Time, succes
 	p.ctrlListHist.WithLabelValues(p.controllerID, fmt.Sprint(success)).Observe(time.Since(start).Seconds())
 }
 
-func (p prometheusRecorder) ObserveControllerHandleLatency(start time.Time, kind string, success bool) {
-	p.ctrlHandledHist.WithLabelValues(p.controllerID, kind, fmt.Sprint(success)).Observe(time.Since(start).Seconds())
+func (p prometheusRecorder) ObserveControllerHandleLatency(start time.Time, kind HandleKind, success bool) {
+	p.ctrlHandledHist.WithLabelValues(p.controllerID, string(kind), fmt.Sprint(success)).Observe(time.Since(start).Seconds())
 }
