@@ -75,9 +75,14 @@ func (p prometheusRecorder) registerMetrics() {
 }
 
 func (p prometheusRecorder) WithID(id string) Recorder {
-	pcopy := NewPrometheus(p.reg).(*prometheusRecorder)
-	pcopy.controllerID = id
-	return pcopy
+	return &prometheusRecorder{
+		ctrlQueuedHist:     p.ctrlQueuedHist,
+		ctrlStorageRetHist: p.ctrlStorageRetHist,
+		ctrlListHist:       p.ctrlListHist,
+		ctrlHandledHist:    p.ctrlHandledHist,
+		controllerID:       id,
+		reg:                p.reg,
+	}
 }
 
 func (p prometheusRecorder) ObserveControllerOnQueueLatency(start time.Time) {
