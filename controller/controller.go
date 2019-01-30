@@ -32,30 +32,6 @@ func (c *Config) defaults() {
 	}
 }
 
-// objectLock will be used to lock the objects, this gives us the ability
-// to only work with one object at the same time while we can process
-// multiple objects in parallel.
-type objectLock struct {
-	ids map[string]struct{}
-	mu  sync.Mutex
-}
-
-func (o *objectLock) acquire(id string) bool {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	_, ok := o.ids[id]
-	if ok {
-		return false
-	}
-	o.ids[id] = struct{}{}
-	return true
-}
-func (o *objectLock) release(id string) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	delete(o.ids, id)
-}
-
 type objectStatus string
 
 const (
@@ -132,10 +108,8 @@ func New(cfg Config, lw ListerWatcher, handler Handler, storage Storage, metrics
 		storage:    storage,
 		metricssvc: metricssvc.WithID(cfg.Name),
 		logger:     logger,
-		objectLock: objectLock{
-			ids: map[string]struct{}{},
-		},
-		queue: make(chan string),
+		objectLock: newMemoryLock(),
+		queue:      make(chan string),
 		objectCache: objectStatusStore{
 			objects: map[string]objectStatus{},
 		},
@@ -237,13 +211,13 @@ func (c *Controller) runWorker(stopC chan struct{}) {
 }
 
 func (c *Controller) processObject(objectID string) (err error) {
-	if !c.objectLock.acquire(objectID) {
+	if !c.objectLock.Acquire(objectID) {
 		// Could not acquire the object processing, other
 		// worker should be processing the same object.
 		c.logger.Debugf("object %s locked, ignoring handling", objectID)
 		return nil
 	}
-	defer c.objectLock.release(objectID)
+	defer c.objectLock.Release(objectID)
 
 	// What's the status of the object? We allow enqueuing when finished.
 	status, ok := c.objectCache.Get(objectID)
@@ -316,4 +290,42 @@ func (c *Controller) enqueueObject(objectID string, status objectStatus) {
 			c.queue <- objectID
 		}()
 	}
+}
+
+// objectLock will be used to lock the objects, this gives us the ability
+// to only work with one object at the same time while we can process
+// multiple objects in parallel.
+// At this moment is a private interface, but could be exposed to the user
+// for custom implementations, this way it could be shared the sate between
+// different controller instances/replicas.
+type objectLock interface {
+	Acquire(id string) bool
+	Release(id string)
+}
+
+type memoryLock struct {
+	objectIDs map[string]struct{}
+	mu        sync.Mutex
+}
+
+func newMemoryLock() objectLock {
+	return &memoryLock{
+		objectIDs: map[string]struct{}{},
+	}
+}
+
+func (m *memoryLock) Acquire(id string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.objectIDs[id]
+	if ok {
+		return false
+	}
+	m.objectIDs[id] = struct{}{}
+	return true
+}
+func (m *memoryLock) Release(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.objectIDs, id)
 }
