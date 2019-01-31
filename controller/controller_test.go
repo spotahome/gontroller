@@ -208,69 +208,46 @@ func TestController(t *testing.T) {
 				Workers: 1,
 			},
 			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
-				// Mock dummy list.
-				mlw.On("List", mock.Anything).Once().Return([]string{}, nil)
+				// List 1 objects (this will work as an add that will slow the watchers).
+				mlw.On("List", mock.Anything).Once().Return([]string{"slow"}, nil)
 
-				// First we will receive 10 add events on the channel, afterwards we will receive 5
-				// deletes fo the last 5 object(`darknight/batman-[5-9]``).
-				//
-				// This will test we only receive 10 events instead of 5 (duplicated keys only processed once)
-				// and the last 5 object are processed with the latest state, not the first one
+				// Guarantee the first event has reached by waiting a bit
+				time.After(10 * time.Millisecond)
+				// Send the same event lots of times, it should be received only once
 				repC := make(chan controller.Event)
 				mlw.On("Watch", mock.Anything).Return((<-chan controller.Event)(repC), nil)
-				repQ := 10
 				go func() {
-					for i := 0; i < repQ; i++ {
+					for i := 0; i < 5; i++ {
 						repC <- controller.Event{
-							ID:   fmt.Sprintf("darknight/batman-%d", i),
-							Kind: controller.EventAdded,
-						}
-					}
-				}()
-				go func() {
-					time.Sleep(1 * time.Millisecond)
-					for i := 5; i < repQ; i++ {
-						repC <- controller.Event{
-							ID:   fmt.Sprintf("darknight/batman-%d", i),
+							ID:   "single",
 							Kind: controller.EventDeleted,
 						}
 					}
 				}()
 
-				// The checks of the events.
-				// We should have 5 adds and 5 deletes, because the delete events after the first adds
-				// should have been update in the internal cache and only process ones.
+				// The checks of the events. We should receive one Get for the first object (the second one is a delete)
 				rec := callRecorder{}
+				r := testObject{ID: "slow"}
+				ms.On("Get", "slow").Once().Return(r, nil).After(30 * time.Millisecond)
 
-				for i := 0; i < 5; i++ {
-					id := fmt.Sprintf("darknight/batman-%d", i)
-					r := &testObject{ID: id}
-					ms.On("Get", id).Once().Return(r, nil).Run(func(_ mock.Arguments) {
-						// We need to slow down the handlers to give it time to the streamed
-						// events to reach the de enqueue process.
-						time.Sleep(1 * time.Millisecond)
-					})
+				repQ := 2 // Wait both calls.
+				r = testObject{ID: "slow"}
+				mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
+					// If we reach the expected call times then finish.
+					rec.inc()
+					if rec.times() == repQ {
+						finishedC <- struct{}{}
+					}
+				})
 
-					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
-						// If we reach the expected call times then finish.
-						rec.inc()
-						if rec.times() == repQ {
-							close(finishedC)
-						}
-					})
-				}
+				mh.On("Delete", mock.Anything, "single").Once().Return(nil).Run(func(_ mock.Arguments) {
+					// If we reach the expected call times then finish.
+					rec.inc()
+					if rec.times() == repQ {
+						finishedC <- struct{}{}
+					}
+				})
 
-				// Deletes.
-				for i := 5; i < repQ; i++ {
-					id := fmt.Sprintf("darknight/batman-%d", i)
-					mh.On("Delete", mock.Anything, id).Once().Return(nil).Run(func(_ mock.Arguments) {
-						// If we reach the expected call times then finish.
-						rec.inc()
-						if rec.times() == repQ {
-							close(finishedC)
-						}
-					})
-				}
 			},
 		},
 		{
