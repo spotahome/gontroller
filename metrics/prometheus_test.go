@@ -14,8 +14,6 @@ import (
 )
 
 func TestPrometheusRecorder(t *testing.T) {
-	now := time.Now()
-
 	tests := []struct {
 		name       string
 		addMetrics func(metricssvc metrics.Recorder)
@@ -24,6 +22,7 @@ func TestPrometheusRecorder(t *testing.T) {
 		{
 			name: "Measuring controller queue metrics should generate the correct metrics.",
 			addMetrics: func(svc metrics.Recorder) {
+				now := time.Now()
 				svc.ObserveControllerOnQueueLatency(now.Add(-1 * time.Second))
 				svc.ObserveControllerOnQueueLatency(now.Add(-6 * time.Second))
 				svc.ObserveControllerOnQueueLatency(now.Add(-55 * time.Millisecond))
@@ -61,6 +60,7 @@ func TestPrometheusRecorder(t *testing.T) {
 		{
 			name: "Measuring controller listerwatcher list metrics should generate the correct metrics.",
 			addMetrics: func(svc metrics.Recorder) {
+				now := time.Now()
 				svc.ObserveControllerListLatency(now.Add(-1*time.Second), true)
 				svc.ObserveControllerListLatency(now.Add(-6*time.Second), false)
 				svc.ObserveControllerListLatency(now.Add(-55*time.Millisecond), true)
@@ -99,6 +99,7 @@ func TestPrometheusRecorder(t *testing.T) {
 		{
 			name: "Measuring controller storage get metrics should generate the correct metrics.",
 			addMetrics: func(svc metrics.Recorder) {
+				now := time.Now()
 				svc.ObserveControllerStorageGetLatency(now.Add(-1*time.Second), true)
 				svc.ObserveControllerStorageGetLatency(now.Add(-6*time.Second), false)
 				svc.ObserveControllerStorageGetLatency(now.Add(-55*time.Millisecond), true)
@@ -137,6 +138,7 @@ func TestPrometheusRecorder(t *testing.T) {
 		{
 			name: "Measuring controller handle metrics should generate the correct metrics.",
 			addMetrics: func(svc metrics.Recorder) {
+				now := time.Now()
 				svc.ObserveControllerHandleLatency(now.Add(-1*time.Second), metrics.AddHandleKind, true)
 				svc.ObserveControllerHandleLatency(now.Add(-55*time.Millisecond), metrics.AddHandleKind, false)
 				svc.ObserveControllerHandleLatency(now.Add(-6*time.Second), metrics.DeleteHandleKind, true)

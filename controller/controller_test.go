@@ -1,7 +1,9 @@
 package controller_test
 
 import (
+	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +14,24 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
+
+// callRecorder is a simple concurrency safe called times recorder.
+type callRecorder struct {
+	i  int
+	mu sync.Mutex
+}
+
+func (c *callRecorder) inc() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.i++
+}
+
+func (c *callRecorder) times() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.i
+}
 
 type testObject struct {
 	ID string
@@ -40,7 +60,7 @@ func TestController(t *testing.T) {
 				}
 				mlw.On("List", mock.Anything).Once().Return(objs, nil)
 
-				timesCalled := 0
+				rec := callRecorder{}
 				for _, obj := range objs {
 					// Expect to Get the object data for each object.
 					r := &testObject{
@@ -51,8 +71,8 @@ func TestController(t *testing.T) {
 					// Expect to handle added each object with it's data.
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times, then finish.
-						timesCalled++
-						if timesCalled == objQ {
+						rec.inc()
+						if rec.times() == objQ {
 							close(finishedC)
 						}
 					})
@@ -76,7 +96,7 @@ func TestController(t *testing.T) {
 				}
 				mlw.On("List", mock.Anything).Once().Return(objs, nil)
 
-				timesCalled := 0
+				rec := callRecorder{}
 				for _, obj := range objs {
 					// Expect to Get the object data for each object.
 					r := &testObject{
@@ -87,8 +107,8 @@ func TestController(t *testing.T) {
 					// Expect to handle added each object with it's data.
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
-						timesCalled++
-						if timesCalled == objQ {
+						rec.inc()
+						if rec.times() == objQ {
 							close(finishedC)
 						}
 					})
@@ -141,7 +161,7 @@ func TestController(t *testing.T) {
 
 				// The checks of the events.
 				maxCalls := 30
-				timesCalled := 0
+				rec := callRecorder{}
 
 				// Adds.
 				for i := 0; i < repQ; i++ {
@@ -150,9 +170,9 @@ func TestController(t *testing.T) {
 					ms.On("Get", id).Once().Return(r, nil)
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
-						timesCalled++
-						if timesCalled == maxCalls {
-							close(finishedC)
+						rec.inc()
+						if rec.times() == maxCalls {
+							finishedC <- struct{}{}
 						}
 					})
 				}
@@ -163,9 +183,9 @@ func TestController(t *testing.T) {
 					ms.On("Get", id).Once().Return(r, nil)
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
-						timesCalled++
-						if timesCalled == maxCalls {
-							close(finishedC)
+						rec.inc()
+						if rec.times() == maxCalls {
+							finishedC <- struct{}{}
 						}
 					})
 				}
@@ -174,16 +194,16 @@ func TestController(t *testing.T) {
 					id := fmt.Sprintf("darknight/batman-del-%d", i)
 					mh.On("Delete", mock.Anything, id).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
-						timesCalled++
-						if timesCalled == maxCalls {
-							close(finishedC)
+						rec.inc()
+						if rec.times() == repQ {
+							finishedC <- struct{}{}
 						}
 					})
 				}
 			},
 		},
 		{
-			name: "Multiple object enqueues of the same object should only processed ones and with the latest state.",
+			name: "Multiple object enqueues of the same object should only processed once and with the latest state.",
 			cfg: controller.Config{
 				Workers: 1,
 			},
@@ -220,7 +240,7 @@ func TestController(t *testing.T) {
 				// The checks of the events.
 				// We should have 5 adds and 5 deletes, because the delete events after the first adds
 				// should have been update in the internal cache and only process ones.
-				timesCalled := 0
+				rec := callRecorder{}
 
 				for i := 0; i < 5; i++ {
 					id := fmt.Sprintf("darknight/batman-%d", i)
@@ -233,8 +253,8 @@ func TestController(t *testing.T) {
 
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
-						timesCalled++
-						if timesCalled == repQ {
+						rec.inc()
+						if rec.times() == repQ {
 							close(finishedC)
 						}
 					})
@@ -245,13 +265,74 @@ func TestController(t *testing.T) {
 					id := fmt.Sprintf("darknight/batman-%d", i)
 					mh.On("Delete", mock.Anything, id).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
-						timesCalled++
-						if timesCalled == repQ {
+						rec.inc()
+						if rec.times() == repQ {
 							close(finishedC)
 						}
 					})
 				}
+			},
+		},
+		{
+			name: "An object that errors and has no retries should only be handled once.",
+			cfg: controller.Config{
+				Workers:    1,
+				MaxRetries: 0,
+			},
+			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
+				// A dummy watcher.
+				mlw.On("Watch", mock.Anything).Return(make(<-chan controller.Event), nil)
 
+				// Mock 2 objects.
+				objs := []string{"obj1", "obj2"}
+				mlw.On("List", mock.Anything).Once().Return(objs, nil)
+
+				// The checks of the events.
+				rec := callRecorder{}
+				for _, id := range objs {
+					r := &testObject{ID: id}
+					ms.On("Get", id).Once().Return(r, nil)
+					// Return error to check retries.
+					mh.On("Add", mock.Anything, r).Once().Return(errors.New("wanted error")).Run(func(_ mock.Arguments) {
+						// If we reach the expected call times then finish.
+						rec.inc()
+						if rec.times() == len(objs) {
+							close(finishedC)
+						}
+					})
+				}
+			},
+		},
+		{
+			name: "An object that errors and has retries should be handled multiple times.",
+			cfg: controller.Config{
+				Workers:    1,
+				MaxRetries: 5,
+			},
+			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
+				// A dummy watcher.
+				mlw.On("Watch", mock.Anything).Return(make(<-chan controller.Event), nil)
+
+				// Mock 2 objects.
+				objs := []string{"obj1", "obj2"}
+				mlw.On("List", mock.Anything).Once().Return(objs, nil)
+
+				// The checks of the events.
+				rec := callRecorder{}
+				retryFactor := 6 // The times should be (retries  + 1).
+				for _, id := range objs {
+					r := &testObject{ID: id}
+					ms.On("Get", id).Times(retryFactor).Return(r, nil)
+					// Return error to check retries.
+					mh.On("Add", mock.Anything, r).Times(retryFactor).Return(errors.New("wanted error")).Run(func(_ mock.Arguments) {
+						// If we reach the expected call times then finish.
+						rec.inc()
+						if rec.times() == len(objs)*retryFactor {
+							close(finishedC)
+						}
+
+					})
+				}
 			},
 		},
 	}
@@ -274,9 +355,10 @@ func TestController(t *testing.T) {
 			// Wait until finished (if not it will fail the test by timeout) and
 			// assert the expectations of the mocks.
 			select {
-			case <-time.After(1 * time.Second):
+			case <-time.After(2 * time.Second):
 				assert.Fail("timeout executing test")
 			case <-finishc:
+				time.Sleep(100 * time.Millisecond) // Wait a little bit in case there are other goroutines finishing.
 				mlw.AssertExpectations(t)
 				mh.AssertExpectations(t)
 				ms.AssertExpectations(t)

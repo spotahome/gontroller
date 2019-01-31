@@ -2,6 +2,7 @@ package controller
 
 import "errors"
 
+// EventKind is the kind of event the Watcher will return.
 type EventKind string
 
 const (

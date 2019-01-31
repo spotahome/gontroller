@@ -1,5 +1,6 @@
 ## 0.x.x / 2019-xx-xx
 
+* [FEATURE] Add retries to the controller.
 * [FEATURE] Add Prometheus recorder implementation.
 * [FEATURE] Add Metrics recorder.
 * [FEATURE] Add Controller.
