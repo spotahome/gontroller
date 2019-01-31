@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -183,7 +184,7 @@ func TestController(t *testing.T) {
 			},
 		},
 		{
-			name: "Multiple object enqueues of the same object should only processed ones and with the latest state.",
+			name: "Multiple object enqueues of the same object should only processed once and with the latest state.",
 			cfg: controller.Config{
 				Workers: 1,
 			},
@@ -251,7 +252,67 @@ func TestController(t *testing.T) {
 						}
 					})
 				}
+			},
+		},
+		{
+			name: "An object that errors and has no retries should only be handled once.",
+			cfg: controller.Config{
+				Workers:    1,
+				MaxRetries: 0,
+			},
+			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
+				// A dummy watcher.
+				mlw.On("Watch", mock.Anything).Return(make(<-chan controller.Event), nil)
 
+				// Mock 2 objects.
+				objs := []string{"obj1", "obj2"}
+				mlw.On("List", mock.Anything).Once().Return(objs, nil)
+
+				// The checks of the events.
+				timesCalled := 0
+				for _, id := range objs {
+					r := &testObject{ID: id}
+					ms.On("Get", id).Once().Return(r, nil)
+					// Return error to check retries.
+					mh.On("Add", mock.Anything, r).Once().Return(errors.New("wanted error")).Run(func(_ mock.Arguments) {
+						// If we reach the expected call times then finish.
+						timesCalled++
+						if timesCalled == len(objs) {
+							close(finishedC)
+						}
+					})
+				}
+			},
+		},
+		{
+			name: "An object that errors and has retries should be handled multiple times.",
+			cfg: controller.Config{
+				Workers:    1,
+				MaxRetries: 5,
+			},
+			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
+				// A dummy watcher.
+				mlw.On("Watch", mock.Anything).Return(make(<-chan controller.Event), nil)
+
+				// Mock 2 objects.
+				objs := []string{"obj1", "obj2"}
+				mlw.On("List", mock.Anything).Once().Return(objs, nil)
+
+				// The checks of the events.
+				timesCalled := 0
+				retryFactor := 6 // The times should be (retries  + 1).
+				for _, id := range objs {
+					r := &testObject{ID: id}
+					ms.On("Get", id).Times(retryFactor).Return(r, nil)
+					// Return error to check retries.
+					mh.On("Add", mock.Anything, r).Times(retryFactor).Return(errors.New("wanted error")).Run(func(_ mock.Arguments) {
+						// If we reach the expected call times then finish.
+						timesCalled++
+						if timesCalled == len(objs)*retryFactor {
+							close(finishedC)
+						}
+					})
+				}
 			},
 		},
 	}
