@@ -9,8 +9,6 @@ import (
 
 	"github.com/spotahome/gontroller/controller"
 	mcontroller "github.com/spotahome/gontroller/internal/mocks/controller"
-	"github.com/spotahome/gontroller/log"
-	"github.com/spotahome/gontroller/metrics"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -38,13 +36,11 @@ type testObject struct {
 }
 
 func TestController(t *testing.T) {
-	tests := []struct {
-		name string
+	tests := map[string]struct {
 		cfg  controller.Config
 		mock func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{})
 	}{
-		{
-			name: "A regular controller with 1 worker should handle the events from the list correctly.",
+		"A regular controller with 1 worker should handle the events from the list correctly.": {
 			cfg: controller.Config{
 				Workers: 1,
 			},
@@ -79,8 +75,8 @@ func TestController(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "A regular controller with multiple worker should handle the objects from the list correctly only once per object.",
+
+		"A regular controller with multiple worker should handle the objects from the list correctly only once per object.": {
 			cfg: controller.Config{
 				Workers: 4,
 			},
@@ -115,8 +111,8 @@ func TestController(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "A regular controller with multiple worker should handle concurrently streaming object events from different kinds.",
+
+		"A regular controller with multiple worker should handle concurrently streaming object events from different kinds.": {
 			cfg: controller.Config{
 				Workers: 4,
 			},
@@ -202,8 +198,8 @@ func TestController(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "Multiple object enqueues of the same object should only processed once and with the latest state.",
+
+		"Multiple object enqueues of the same object should only processed once and with the latest state.": {
 			cfg: controller.Config{
 				Workers: 1,
 			},
@@ -250,8 +246,8 @@ func TestController(t *testing.T) {
 
 			},
 		},
-		{
-			name: "An object that errors and has no retries should only be handled once.",
+
+		"An object that errors and has no retries should only be handled once.": {
 			cfg: controller.Config{
 				Workers:    1,
 				MaxRetries: 0,
@@ -280,8 +276,8 @@ func TestController(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "An object that errors and has retries should be handled multiple times.",
+
+		"An object that errors and has retries should be handled multiple times.": {
 			cfg: controller.Config{
 				Workers:    1,
 				MaxRetries: 5,
@@ -314,8 +310,8 @@ func TestController(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
 			assert := assert.New(t)
 
 			// Mocks
@@ -325,7 +321,10 @@ func TestController(t *testing.T) {
 			finishc := make(chan struct{})
 			test.mock(mlw, mh, ms, finishc)
 
-			ctrl := controller.New(test.cfg, mlw, mh, ms, metrics.Dummy, log.Dummy)
+			test.cfg.ListerWatcher = mlw
+			test.cfg.Handler = mh
+			test.cfg.Storage = ms
+			ctrl, _ := controller.New(test.cfg)
 			stopC := make(chan struct{})
 			go ctrl.Run(stopC)
 
