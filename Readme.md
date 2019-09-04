@@ -32,6 +32,16 @@ Gontroller is mainly inspired by Kubernetes controllers design and [client-go] i
 - Extensible, all is based on behavior (go interfaces) and not concrete types.
 - Easy to test, business logic not coupled with infrastructure code (controller implementation/library)
 
+## Getting started
+
+Run the example...
+
+```bash
+go run github.com/spotahome/gontroller/examples/stub-funcs-controller
+```
+
+And check the [examples] folder to get an idea of how you could create a controller.
+
 ## How does it work
 
 The controller is composed by 3 main components:
@@ -45,10 +55,6 @@ The controller is composed by 3 main components:
 The controller will call the `ListerWatcher.List` method every T interval (e.g. 30s) to enqueue the IDs to process and the `ListerWatcher.Watch` will enqueue real time events to be processed (so there is no need to wait for next List iteration).
 
 The controller will be dequeueing from the queue the IDs to process them but before passing to the workers it will get the object to process from the `Storage`, after getting the object it will call one of the workers to handle it using the `Handler`.
-
-## Examples
-
-Check the [examples] folder to get an Idea of how you could create an operator/controller
 
 ## Internal architecture
 
