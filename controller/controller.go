@@ -114,47 +114,47 @@ func New(cfg Config) (*Controller, error) {
 // Run will run the controller and start handling the objects. The way this
 // controller is implemented and designed is based on Kubernetes controllers although
 // it isn't based on Kubernetes objects. It's a blocking action.
-func (c *Controller) Run(stopC chan struct{}) error {
+// The controller will end when the context is finished.
+func (c *Controller) Run(ctx context.Context) error {
 	// Run the enqueuers, these are the reconciliation loop (list) and the
 	// event stream (the watcher).
-	go c.reconciliationLoop(stopC)
+	go c.reconciliationLoop(ctx)
 	eventStream, err := c.lw.Watch()
 	if err != nil {
 		return err
 	}
-	go c.handleWatcherEvents(stopC, eventStream)
+	go c.handleWatcherEvents(ctx, eventStream)
 
 	// Run workers.
 	for i := 0; i < c.cfg.Workers; i++ {
-		go c.runWorker(stopC)
+		go c.runWorker(ctx)
 	}
 
-	<-stopC
-	c.logger.Infof("stop signal received, stopping controller")
+	<-ctx.Done()
+	c.logger.Infof("stopping controller...")
 	return nil
 }
 
 // reconciliationLoop will  be reconciling the state in a loop
 // so we base on state and not only on events, we get the design
 // from Kubernetes controllers.
-func (c *Controller) reconciliationLoop(stopC chan struct{}) {
-	// Run just when we start the loop and the let the time.After
-	// do it's job.
-	c.reconcile()
-
+func (c *Controller) reconciliationLoop(ctx context.Context) {
 	// Start the reconciliation loop.
 	for {
+		c.reconcile()
+
 		select {
-		case <-stopC:
+		case <-ctx.Done():
 			return
 		case <-time.After(c.cfg.ResyncInterval):
-			c.reconcile()
 		}
 	}
 }
 
 // reconcile will list and enqueue the required objects again.
 func (c *Controller) reconcile() {
+	c.logger.Debugf("reconciliation loop iteration started")
+
 	// List all the required objects
 	startList := time.Now()
 	objectIDs, err := c.lw.List()
@@ -170,10 +170,10 @@ func (c *Controller) reconcile() {
 	}
 }
 
-func (c *Controller) handleWatcherEvents(stopC chan struct{}, eventStream <-chan Event) {
+func (c *Controller) handleWatcherEvents(ctx context.Context, eventStream <-chan Event) {
 	for {
 		select {
-		case <-stopC:
+		case <-ctx.Done():
 			return
 		case ev := <-eventStream:
 			switch ev.Kind {
@@ -190,10 +190,12 @@ func (c *Controller) handleWatcherEvents(stopC chan struct{}, eventStream <-chan
 	}
 }
 
-func (c *Controller) runWorker(stopC chan struct{}) {
+func (c *Controller) runWorker(ctx context.Context) {
+	c.logger.Debugf("worker started")
+
 	for {
 		select {
-		case <-stopC:
+		case <-ctx.Done():
 			return
 		case objectID := <-c.queue:
 			// process the object.
@@ -357,7 +359,6 @@ func (m *memoryLock) Release(id string) {
 // but the current state of the object is deleted, with this store we only
 // would enqueue objectIDs and in the last moment being dequeued the object ID from
 // the queue we would check the status on this object to get the latest state.
-
 type objectStatus string
 
 const (

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -54,13 +56,19 @@ func main() {
 		logger.Errorf("error creating controller: %s", err)
 		os.Exit(1)
 	}
-	err = ctrl.Run(make(chan struct{}))
 
-	if err != nil {
-		logger.Errorf("error running controller: %s", err)
-		os.Exit(1)
-	}
+	go func() {
+		err = ctrl.Run(context.Background())
+		if err != nil {
+			logger.Errorf("error running controller: %s", err)
+			os.Exit(1)
+		}
+	}()
 
+	sigC := make(chan os.Signal, 1)
+	signal.Notify(sigC, syscall.SIGTERM, syscall.SIGINT)
+	<-sigC
+	logger.Infof("signal captured, exiting...")
 }
 
 func createListeWatcher() controller.ListerWatcher {
