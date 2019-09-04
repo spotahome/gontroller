@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/spotahome/gontroller/controller"
@@ -86,15 +88,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	endC := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		err := ctrl.Run(endC)
+		err := ctrl.Run(ctx)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error while running controller: %s", err)
 			os.Exit(1)
 		}
 	}()
 
-	<-time.After(1 * time.Minute)
-	close(endC)
+	sigC := make(chan os.Signal, 1)
+	signal.Notify(sigC, syscall.SIGTERM, syscall.SIGINT)
+	<-sigC
+	logger.Infof("signal captured, exiting...")
+	cancel()
+	<-time.After(2 * time.Second)
 }

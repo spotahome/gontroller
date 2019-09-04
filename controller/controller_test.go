@@ -1,6 +1,7 @@
 package controller_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -325,8 +326,9 @@ func TestController(t *testing.T) {
 			test.cfg.Handler = mh
 			test.cfg.Storage = ms
 			ctrl, _ := controller.New(test.cfg)
-			stopC := make(chan struct{})
-			go ctrl.Run(stopC)
+			ctx, cancel := context.WithCancel(context.Background())
+			go ctrl.Run(ctx)
+			defer cancel()
 
 			// Wait until finished (if not it will fail the test by timeout) and
 			// assert the expectations of the mocks.
