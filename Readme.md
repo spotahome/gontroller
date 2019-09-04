@@ -4,7 +4,11 @@
 
 # Gontroller
 
-A Go library to create controllers and operators without Kubernetes.
+A Go library to create [feedback loop/control controllers][control-theory], or in other words... a Go library to create controller without Kubernetes.
+
+## Current state
+
+Alpha state
 
 ## Introduction
 
@@ -16,17 +20,27 @@ Gontroller let's you apply this pattern on non-kubernetes applications. You don'
 
 ## Features
 
-Gontroller is mainly inspired by Kubernetes controllers design and [client-go] internal library implementation with a simplified design and some changes to be make it more flexible and easy to use. The main features are:
+Gontroller is mainly inspired by Kubernetes controllers design and [client-go] internal library implementation with a simplified design and some changes to be more flexible and easy to use. The main features are:
 
 - No Kubernetes dependency.
 - Easy to create controllers and operators.
 - Automatic retries.
-- Ensure Only one worker is handling a same object at the same time.
-- An object to be processed will be only once on the queue.
+- Ensure only one worker is handling a same object at the same time.
+- An object to be processed will be only once on the processing queue.
 - Handle all objects at regular intervals (for reconciliation loop) and updated objects on real-time.
 - Metrics and Prometheus/Openmetrics implementation.
 - Extensible, all is based on behavior (go interfaces) and not concrete types.
-- Easy to test, business logic not coupled with infrastructure code (controller implementation/ library)
+- Easy to test, business logic not coupled with infrastructure code (controller implementation/library)
+
+## Getting started
+
+Run the example...
+
+```bash
+go run github.com/spotahome/gontroller/examples/stub-funcs-controller
+```
+
+And check the [examples] folder to get an idea of how you could create a controller.
 
 ## How does it work
 
@@ -41,10 +55,6 @@ The controller is composed by 3 main components:
 The controller will call the `ListerWatcher.List` method every T interval (e.g. 30s) to enqueue the IDs to process and the `ListerWatcher.Watch` will enqueue real time events to be processed (so there is no need to wait for next List iteration).
 
 The controller will be dequeueing from the queue the IDs to process them but before passing to the workers it will get the object to process from the `Storage`, after getting the object it will call one of the workers to handle it using the `Handler`.
-
-## Examples
-
-Check the [examples] folder to get an Idea of how you could create an operator/controller
 
 ## Internal architecture
 
@@ -73,7 +83,7 @@ A loop is simple and in lot of cases it good enough but is not reliable, on the 
 
 ### Why only enqueue IDs?
 
-In the end the controller only needs IDs to work (queue, lock...), the business logic is on the handler and is the one that needs to object data, that's why on the step before calling the handler, the store is called to get the latest state.
+In the end the controller only needs IDs to work (queue, lock...), the business logic is on the handler and is the one that needs the object data, that's why on the step before calling the handler, the store is called to get the latest state.
 
 ### How do you ensure a object is handled by a single worker?
 
@@ -87,7 +97,7 @@ The controller uses a small cache of what's queued and if is already there it wi
 
 We could create the `ListerWatcher` to return the whole object (like Kubernetes) instead of the IDs and let the controller maintain the state, but this couples us the input of the queue with the output, and not always are the same.
 
-On the contrary Gontroller takes another design approach making the `ListerWatcher` only return the IDs, wthis way delegating the retrieval of object data to the last part of the controller (the `Storage`) so listing the objects to be handled don't require all the data.
+On the contrary Gontroller takes another design approach making the `ListerWatcher` only return the IDs, this way delegating the retrieval of object data to the last part of the controller (the `Storage`) so listing the objects to be handled don't require all the data.
 
 ```text
 ListerWatcher -> Controller -> Handler
@@ -117,12 +127,13 @@ For example, an organization in Github has Git repositories with a file named `i
 
 ### Does the lock of object handling work with independent instances?
 
-At this moment this can't be made due to have the lock per controller instance, so to have more than one controller running and be sure that an object is only being handled by one controller and one worker at the same time you need to use leader election.
+At this moment this can't be made due to having a lock per controller instance, so if you want to have more than one controller running and be sure that an object is only being handled by one controller and one worker at the same time, you need to use leader election.
 
 We are thinking in letting the user pass a custom lock service to the controller so the controller uses this service to lock the handling of one object at a time. The simplest example to allow this could be having multiple instances of the controller and have a lock that uses a shared Redis by all the instances that is used to Lock.
 
 We are not sure if this is something the users would use or only add complexity, that's why it has not been added at the moment.
 
+[control-theory]: https://en.wikipedia.org/wiki/Control_theory
 [what-is-a-controller]: https://book.kubebuilder.io/basics/what_is_a_controller.html
 [client-go]: https://github.com/kubernetes/client-go
 [examples]: examples

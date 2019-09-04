@@ -22,9 +22,19 @@ type Config struct {
 	Workers int
 	// MaxRetries is the maximum number of retries an object will have after an error.
 	MaxRetries int
+	// ListerWatcher is the lister watcher the controller will use to queue the elements to process.
+	ListerWatcher ListerWatcher
+	// Handler is the handler that will handle the elements processed by the handler.
+	Handler Handler
+	// Storage is the storage where the controller will get the object that the handler needs to process.
+	Storage Storage
+	// MetricsRecorder is the recorder used to record controller metrics.
+	MetricsRecorder metrics.Recorder
+	// Logger is the logger.
+	Logger log.Logger
 }
 
-func (c *Config) defaults() {
+func (c *Config) defaults() error {
 	if c.ResyncInterval <= 0 {
 		c.ResyncInterval = 30 * time.Second
 	}
@@ -36,6 +46,33 @@ func (c *Config) defaults() {
 	if c.MaxRetries <= 0 {
 		c.MaxRetries = 0
 	}
+
+	if c.Logger == nil {
+		c.Logger = log.Dummy
+	}
+
+	if c.MetricsRecorder == nil {
+		c.Logger.Warningf("controller metrics disabled")
+		c.MetricsRecorder = metrics.Dummy
+	}
+
+	if c.Name == "" {
+		c.Logger.Warningf("controller configured without name")
+	}
+
+	if c.ListerWatcher == nil {
+		return fmt.Errorf("a ListerWatcher is required")
+	}
+
+	if c.Storage == nil {
+		return fmt.Errorf("a Storage is required")
+	}
+
+	if c.Handler == nil {
+		return fmt.Errorf("a Handler is required")
+	}
+
+	return nil
 }
 
 // Controller is the main controller that will process the objects.
@@ -50,34 +87,28 @@ type Controller struct {
 	logger      log.Logger
 	objectLock  objectLock
 	queue       chan string
-	metricssvc  metrics.Recorder
+	mRecorder   metrics.Recorder
 	objectCache *queuedObjectsCache
 }
 
 // New returns a new controller.
-func New(cfg Config, lw ListerWatcher, handler Handler, storage Storage, metricssvc metrics.Recorder, logger log.Logger) *Controller {
-	cfg.defaults()
-
-	if metricssvc == nil {
-		logger.Warningf("controller metrics disabled")
-		metricssvc = metrics.Dummy
-	}
-
-	if cfg.Name == "" {
-		logger.Warningf("controller configured without name")
+func New(cfg Config) (*Controller, error) {
+	err := cfg.defaults()
+	if err != nil {
+		return nil, fmt.Errorf("error creating controller: %s", err)
 	}
 
 	return &Controller{
 		cfg:         cfg,
-		lw:          lw,
-		handler:     handler,
-		storage:     storage,
-		metricssvc:  metricssvc.WithID(cfg.Name),
-		logger:      logger,
+		lw:          cfg.ListerWatcher,
+		handler:     cfg.Handler,
+		storage:     cfg.Storage,
+		mRecorder:   cfg.MetricsRecorder.WithID(cfg.Name),
+		logger:      cfg.Logger,
 		queue:       make(chan string),
 		objectLock:  newMemoryLock(),
 		objectCache: newQueuedObjectsCache(),
-	}
+	}, nil
 }
 
 // Run will run the controller and start handling the objects. The way this
@@ -127,7 +158,7 @@ func (c *Controller) reconcile() {
 	// List all the required objects
 	startList := time.Now()
 	objectIDs, err := c.lw.List()
-	c.metricssvc.ObserveControllerListLatency(startList, err == nil)
+	c.mRecorder.ObserveControllerListLatency(startList, err == nil)
 	if err != nil {
 		c.logger.Errorf("error listing objects: %s", err)
 	}
@@ -212,7 +243,7 @@ func (c *Controller) processObject(objectID string) (err error) {
 	case objectStatusMissing:
 		// Measure handling.
 		defer func(start time.Time) {
-			c.metricssvc.ObserveControllerHandleLatency(start, metrics.DeleteHandleKind, err == nil)
+			c.mRecorder.ObserveControllerHandleLatency(start, metrics.DeleteHandleKind, err == nil)
 		}(time.Now())
 
 		return c.handler.Delete(context.Background(), objectID)
@@ -220,7 +251,7 @@ func (c *Controller) processObject(objectID string) (err error) {
 		// Get the object data from the storage.
 		startStoreGet := time.Now()
 		object, err := c.storage.Get(objectID)
-		c.metricssvc.ObserveControllerStorageGetLatency(startStoreGet, err == nil)
+		c.mRecorder.ObserveControllerStorageGetLatency(startStoreGet, err == nil)
 		if err != nil {
 			return err
 		}
@@ -234,7 +265,7 @@ func (c *Controller) processObject(objectID string) (err error) {
 
 		startHandle := time.Now()
 		err = c.handler.Add(context.Background(), object)
-		c.metricssvc.ObserveControllerHandleLatency(startHandle, metrics.AddHandleKind, err == nil)
+		c.mRecorder.ObserveControllerHandleLatency(startHandle, metrics.AddHandleKind, err == nil)
 		return err
 	default:
 		return fmt.Errorf("unknown object status kind: %s", status)
@@ -265,13 +296,13 @@ func (c *Controller) enqueueObjectWithState(objectID string, status objectStatus
 // enqueueObject will queue the object in the controller queue.
 func (c *Controller) enqueueObject(objectID string) {
 	go func() {
-		c.metricssvc.IncControllerQueuedTotal()
+		c.mRecorder.IncControllerQueuedTotal()
 
 		// When finishing this func we measure the latency of being consumed a.k.a the
 		// time spent on the queue.
 		defer func(start time.Time) {
 			// If we are here means that the queued object has been consumed form the queue.
-			c.metricssvc.ObserveControllerOnQueueLatency(start)
+			c.mRecorder.ObserveControllerOnQueueLatency(start)
 		}(time.Now())
 
 		// Queue the object.
