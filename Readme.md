@@ -68,7 +68,7 @@ The controller will be dequeueing from the queue the IDs to process them but bef
    2. It will save new state (present or deleted) of the ID on the internal state cache.
 3. The queue has FIFO priority.
 4. The processor will process the queued IDs
-   1. Will check the internal lock to know if is already being handled. If not it will acquire the lock.
+   1. Will check the `ObjectLocker` to know if is already being handled. If not it will acquire the lock (if already acquired it will ignore this ID).
    2. Will get from the `Storage` the object data based on the ID.
    3. Will get the latest state of the object form the State cache.
    4. Will call the handler using one of the workers and pass the object, if the latest state is present it will call `Handler.Add`, if is missing it will call `Handler.Delete`.
@@ -127,11 +127,18 @@ For example, an organization in Github has Git repositories with a file named `i
 
 ### Does the lock of object handling work with independent instances?
 
-At this moment this can't be made due to having a lock per controller instance, so if you want to have more than one controller running and be sure that an object is only being handled by one controller and one worker at the same time, you need to use leader election.
+Gontroller by default will ensure only a same object (same == same ID) is processed by a worker at the same time, but this is guaranteed only on the same controller instance.
 
-We are thinking in letting the user pass a custom lock service to the controller so the controller uses this service to lock the handling of one object at a time. The simplest example to allow this could be having multiple instances of the controller and have a lock that uses a shared Redis by all the instances that is used to Lock.
+But this can be achieved implement with a custom `controller.ObjectLocker` interface:
 
-We are not sure if this is something the users would use or only add complexity, that's why it has not been added at the moment.
+```go
+type ObjectLocker interface {
+  Acquire(id string) bool
+  Release(id string)
+}
+```
+
+A simple example to allow sharing this lock by multiple instances at the same time, could be implementing a lock that uses a shared Redis by all the instances that is used as the locker.
 
 [control-theory]: https://en.wikipedia.org/wiki/Control_theory
 [what-is-a-controller]: https://book.kubebuilder.io/basics/what_is_a_controller.html

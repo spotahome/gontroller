@@ -28,6 +28,11 @@ type Config struct {
 	Handler Handler
 	// Storage is the storage where the controller will get the object that the handler needs to process.
 	Storage Storage
+	// ObjectLocker is the locker that will be used to lock the objects that are being processed by the
+	// workers.
+	// By default it will use a memory lock that will ensure an object is only processed once at the
+	// same time by one worker.
+	ObjectLocker ObjectLocker
 	// MetricsRecorder is the recorder used to record controller metrics.
 	MetricsRecorder metrics.Recorder
 	// Logger is the logger.
@@ -68,6 +73,10 @@ func (c *Config) defaults() error {
 		return fmt.Errorf("a Storage is required")
 	}
 
+	if c.ObjectLocker == nil {
+		c.ObjectLocker = newMemoryLock()
+	}
+
 	if c.Handler == nil {
 		return fmt.Errorf("a Handler is required")
 	}
@@ -80,15 +89,15 @@ func (c *Config) defaults() error {
 //
 // TODO: explain controller
 type Controller struct {
-	cfg         Config
-	lw          ListerWatcher
-	handler     Handler
-	storage     Storage
-	logger      log.Logger
-	objectLock  objectLock
-	queue       chan string
-	mRecorder   metrics.Recorder
-	objectCache *queuedObjectsCache
+	cfg          Config
+	lw           ListerWatcher
+	handler      Handler
+	storage      Storage
+	logger       log.Logger
+	objectLocker ObjectLocker
+	queue        chan string
+	mRecorder    metrics.Recorder
+	objectCache  *queuedObjectsCache
 }
 
 // New returns a new controller.
@@ -99,15 +108,15 @@ func New(cfg Config) (*Controller, error) {
 	}
 
 	return &Controller{
-		cfg:         cfg,
-		lw:          cfg.ListerWatcher,
-		handler:     cfg.Handler,
-		storage:     cfg.Storage,
-		mRecorder:   cfg.MetricsRecorder.WithID(cfg.Name),
-		logger:      cfg.Logger,
-		queue:       make(chan string),
-		objectLock:  newMemoryLock(),
-		objectCache: newQueuedObjectsCache(),
+		cfg:          cfg,
+		lw:           cfg.ListerWatcher,
+		handler:      cfg.Handler,
+		storage:      cfg.Storage,
+		mRecorder:    cfg.MetricsRecorder.WithID(cfg.Name),
+		logger:       cfg.Logger,
+		queue:        make(chan string),
+		objectLocker: cfg.ObjectLocker,
+		objectCache:  newQueuedObjectsCache(),
 	}, nil
 }
 
@@ -225,13 +234,13 @@ func (c *Controller) retryIfRequired(id string, err error) {
 }
 
 func (c *Controller) processObject(objectID string) (err error) {
-	if !c.objectLock.Acquire(objectID) {
+	if !c.objectLocker.Acquire(objectID) {
 		// Could not acquire the object processing, other
 		// worker should be processing the same object.
 		c.logger.Debugf("object %s locked, ignoring handling", objectID)
 		return nil
 	}
-	defer c.objectLock.Release(objectID)
+	defer c.objectLocker.Release(objectID)
 
 	// What's the status of the object? We allow enqueuing when finished.
 	status, ok := c.objectCache.GetStatus(objectID)
@@ -312,29 +321,33 @@ func (c *Controller) enqueueObject(objectID string) {
 	}()
 }
 
-// objectLock will be used to lock the objects, this gives us the ability
+// ObjectLocker will be used to lock the objects, this gives us the ability
 // to only work with one object at the same time while we can process
 // multiple objects in parallel.
-// At this moment is a private interface, but could be exposed to the user
-// for custom implementations, this way it could be shared the sate between
-// different controller instances/replicas.
-type objectLock interface {
+type ObjectLocker interface {
+	// Acquire when called it will try to acquire the lock for the
+	// passed ID, this will return if the lock was acquired successfully
+	// or not.
+	// If the return result is true, means the object will be locked and
+	// ready to be processed safely by the caller.
 	Acquire(id string) bool
+	// Release will release the lock if it was acquired, giving the ability
+	// to be acquired again.
 	Release(id string)
 }
 
-type memoryLock struct {
+type memoryLocker struct {
 	objectIDs map[string]struct{}
 	mu        sync.Mutex
 }
 
-func newMemoryLock() objectLock {
-	return &memoryLock{
+func newMemoryLock() ObjectLocker {
+	return &memoryLocker{
 		objectIDs: map[string]struct{}{},
 	}
 }
 
-func (m *memoryLock) Acquire(id string) bool {
+func (m *memoryLocker) Acquire(id string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, ok := m.objectIDs[id]
@@ -344,7 +357,7 @@ func (m *memoryLock) Acquire(id string) bool {
 	m.objectIDs[id] = struct{}{}
 	return true
 }
-func (m *memoryLock) Release(id string) {
+func (m *memoryLocker) Release(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.objectIDs, id)
