@@ -84,10 +84,25 @@ func (c *Config) defaults() error {
 	return nil
 }
 
-// Controller is the main controller that will process the objects.
-// The controller will have a lister watcher, a handler and a Storer.
+// Controller is composed by 3 main components:
+// - ListerWatcher: This piece is the one that will provide the object IDs to the
+//	controller queue. Its composed by two internal pieces, the `List`, that will
+//	will receive object events (create, modify, delete...).
+// - Storage: The storage is the one that know how to get the object based on the
+//	 ListerWatcher enqueued ID and the controller will call this store just before
+//	 calling the Handler.
+// - Handler: The handler will handle the `Add` (exists) and `Delete` (doesn't exist)
+//   objects queued by the ListerWatcher.
 //
-// TODO: explain controller
+// The controller will call the `ListerWatcher.List` method every T interval (e.g. 30s)
+// to enqueue the IDs to process and the `ListerWatcher.Watch` will enqueue real time
+// events to be processed (so there is no need to wait for next List iteration).
+//
+// The controller will be dequeueing from the queue the IDs to process them but before
+// passing to the handlers it will get the object to process from the `Storage` if the
+// object with the ID is not being processed already by a handler in another worker,
+// this is achieved with the ObjectLocker component. After getting the object it will
+// send the object  to the workers workers to handle it using the `Handler`.
 type Controller struct {
 	cfg          Config
 	lw           ListerWatcher
@@ -170,6 +185,7 @@ func (c *Controller) reconcile() {
 	c.mRecorder.ObserveControllerListLatency(startList, err == nil)
 	if err != nil {
 		c.logger.Errorf("error listing objects: %s", err)
+		return
 	}
 
 	// Queue the objects to be handled.

@@ -25,7 +25,7 @@ Gontroller is mainly inspired by Kubernetes controllers design and [client-go] i
 - No Kubernetes dependency.
 - Easy to create controllers and operators.
 - Automatic retries.
-- Ensure only one worker is handling a same object at the same time.
+- Ensure only one worker is handling a same object (based on ID) at the same time.
 - An object to be processed will be only once on the processing queue.
 - Handle all objects at regular intervals (for reconciliation loop) and updated objects on real-time.
 - Metrics and Prometheus/Openmetrics implementation.
@@ -67,31 +67,35 @@ The controller will be dequeueing from the queue the IDs to process them but bef
    1. The enqueue will check if the ID is already on the internal state cache. If is there it will not send the ID to the queue, if its not there it will send to the controller queue.
    2. It will save new state (present or deleted) of the ID on the internal state cache.
 3. The queue has FIFO priority.
-4. The processor will process the queued IDs
-   1. Will check the `ObjectLocker` to know if is already being handled. If not it will acquire the lock (if already acquired it will ignore this ID).
-   2. Will get from the `Storage` the object data based on the ID.
-   3. Will get the latest state of the object form the State cache.
-   4. Will call the handler using one of the workers and pass the object, if the latest state is present it will call `Handler.Add`, if is missing it will call `Handler.Delete`.
-   5. When the worker/`Handler` finishes it will release the lock.
-5. The `Handler` will execute the business logic for the object.
+4. The worker will process the queued IDs
+   1. Will try acquiring the lock using the `ObjectLocker`. If not acquired means is already being handled by another worker and it will ignore the ID and return to the worker pool. On the contrary, if acquired, it will continue with the processing.
+   2. Will get the latest state of the object form the State cache.
+   3. If state is not deleted it will get the object data from the `Storage` based on the ID.
+   4. Will call the worker handler passing the object data obtained from the `Storage` if the latest state is `present` using `Handler.Add`, on the contrary if the latest state is `missing`, it will call `Handler.Delete`.
+   5. The `Handler` will execute the business logic on the object.
+   6. When the `Handler` finishes it will release the lock of the ID.
 
 ## FAQ
 
 ### Why not use a simple loop?
 
-A loop is simple and in lot of cases it good enough but is not reliable, on the contrary the reconciliation loop gives us a robust state by handling all objects in regular intervals and it acts on real time events, gontroller has also retries, it ensures one object is only being handled concurrently by one worker and that is handling the latest state and not an old one.
+A loop is simple and in lot of cases is good enough, the problem is that is not reliable, on the contrary the reconciliation loop gives us a robust state by handling all objects in regular intervals and it acts on real time events, gontroller has also retries, apart from that it ensures one object is only being handled concurrently by one worker and the state that is handling is the latest state of that object (in case it has been updated in the meantime it was waiting in the queue to be processed).
 
 ### Why only enqueue IDs?
 
-In the end the controller only needs IDs to work (queue, lock...), the business logic is on the handler and is the one that needs the object data, that's why on the step before calling the handler, the store is called to get the latest state.
+In the end the controller only needs a reference or a unique ID to work (queue, lock...), the business logic is on the handler and is the one that needs the object data, that's why on the step before calling the handler, the store is called to get all the data.
+
+We could delete the Storage component and let the handler get whatever it wants based on the ID, but having a storage component it makes easier the controller to be structured and understandable. And you could make the storage be transparent and always return the received ID string in case of not wanting to use this component).
 
 ### How do you ensure a object is handled by a single worker?
 
-The controller uses a internal cache to lock the objects based on the IDs until the worker ends it's work.
+The controller uses an `ObjectLocker` interface to do this, is an optional component, by default gontroller uses a memory based locker that is only available to that controller, this locks the IDs once they are being handled and unlocks once finished.
+
+In case you want a shared lock between instances you can implement a custom `ObjectLocker`, check the question in the FAQ about locking multiple instances for more information.
 
 ### How do you ensure a same object is not repeated N times on the queue?
 
-The controller uses a small cache of what's queued and if is already there it will ignore it
+The controller uses a small cache of what's queued and if is already there it will ignore it.
 
 ### Why do we need the Storage component?
 
@@ -101,18 +105,18 @@ On the contrary Gontroller takes another design approach making the `ListerWatch
 
 ```text
 ListerWatcher -> Controller -> Handler
-  │                    ^
+  ^                    ^
   │                    │
-  └> Get IDs           └── Storage (Get data from ID)
+  └─ Get IDs           └── Storage (Get data from ID)
 ```
 
-Also with this design you can use the same cache for the ListerWatcher and the `Storage` if you want and you could obtain the same result as a kubernetes style controller/operator by getting the data, storing the data on the `Storage` and returning the IDs:
+Also with this design you can use the same cache for the ListerWatcher and the `Storage` if you want and you could obtain the same result as a kubernetes style controller/operator by getting the data, storing the data on the `Storage` and returning the IDs (be aware of concurrency):
 
 ```text
-ListerWatcher -> Controller -> Handler
-  │                    ^
-  │                    │
-  └─────> Storage ─────┘
+ListerWatcher ----------------------------------------> Controller ----> Handler
+     ^                                                       ^
+     │                                                       │
+     └── (Get IDs from data) ───> Storage ── (Get data) ────-┘
 ```
 
 ### Can I interact with Kubernetes?
@@ -138,9 +142,12 @@ type ObjectLocker interface {
 }
 ```
 
-A simple example to allow sharing this lock by multiple instances at the same time, could be implementing a lock that uses a shared Redis by all the instances that is used as the locker.
+An example to allow sharing this lock by multiple instances at the same time, could be implementing a lock that uses a shared Redis by all the instances that is used as the locker.
+
+Check [this][shared-locker-example] simple example.
 
 [control-theory]: https://en.wikipedia.org/wiki/Control_theory
 [what-is-a-controller]: https://book.kubebuilder.io/basics/what_is_a_controller.html
 [client-go]: https://github.com/kubernetes/client-go
 [examples]: examples
+[shared-locker-example]: examples/shared-locker-controller
