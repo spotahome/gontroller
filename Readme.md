@@ -2,7 +2,7 @@
     <img src="docs/img/logo.svg" width="30%" align="center" alt="gontroller">
 </p>
 
-# Gontroller
+# Gontroller [![Build Status][travis-image]][travis-url] [![Go Report Card][goreport-image]][goreport-url] [![GoDoc][godoc-image]][godoc-url]
 
 A Go library to create [feedback loop/control controllers][control-theory], or in other words... a Go library to create controller without Kubernetes.
 
@@ -146,6 +146,9 @@ An example to allow sharing this lock by multiple instances at the same time, co
 
 Check [this][shared-locker-example] simple example.
 
+[travis-image]: https://travis-ci.org/spotahome/gontroller.svg?branch=master
+[travis-url]: https://travis-ci.org/spotahome/gontroller
+[goreport-image]: https://goreportcard.com/badge/github.com/spotahome/gontroller
 [control-theory]: https://en.wikipedia.org/wiki/Control_theory
 [what-is-a-controller]: https://book.kubebuilder.io/basics/what_is_a_controller.html
 [client-go]: https://github.com/kubernetes/client-go
