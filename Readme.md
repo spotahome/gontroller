@@ -150,6 +150,8 @@ Check [this][shared-locker-example] simple example.
 [travis-url]: https://travis-ci.org/spotahome/gontroller
 [goreport-image]: https://goreportcard.com/badge/github.com/spotahome/gontroller
 [goreport-url]: https://goreportcard.com/report/github.com/spotahome/gontroller
+[godoc-image]: https://godoc.org/github.com/spotahome/gontroller?status.svg
+[godoc-url]: https://godoc.org/github.com/spotahome/gontroller
 [control-theory]: https://en.wikipedia.org/wiki/Control_theory
 [what-is-a-controller]: https://book.kubebuilder.io/basics/what_is_a_controller.html
 [client-go]: https://github.com/kubernetes/client-go
