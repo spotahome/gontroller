@@ -1,11 +1,18 @@
-## 0.x.x / 2019-xx-xx
+# Changelog
 
-* [FEATURE] Allow configuring ObjectLocker on controller.
-* [FEATURE] Add retries to the controller.
-* [FEATURE] Add Prometheus recorder implementation.
-* [FEATURE] Add Metrics recorder.
-* [FEATURE] Add Controller.
-* [FEATURE] Add ListerWatcher.
-* [FEATURE] Add Storage.
-* [FEATURE] Add Handler.
+## [Unreleased]
+### Added
+- Allow configuring ObjectLocker on controller.
+- Add retries to the controller.
+- Add Prometheus recorder implementation.
+- Add Metrics recorder.
+- Add Controller.
+- Add ListerWatcher.
+- Add Storage.
+- Add Handler.
 
+### Changed
+- Store and ListerWatcher now receive a context.
+
+[Unreleased]: https://github.com/spotahome/gontroller/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/spotahome/gontroller/releases/tag/v0.0.1

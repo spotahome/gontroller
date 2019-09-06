@@ -33,14 +33,14 @@ func main() {
 		Workers:        2,
 		MaxRetries:     2,
 		ListerWatcher: controller.ListerWatcherFunc{
-			ListFunc: func() ([]string, error) {
+			ListFunc: func(_ context.Context) ([]string, error) {
 				askFor := []string{}
 				for id := range database {
 					askFor = append(askFor, id)
 				}
 				return askFor, nil
 			},
-			WatchFunc: func() (<-chan controller.Event, error) {
+			WatchFunc: func(_ context.Context) (<-chan controller.Event, error) {
 				c := make(chan controller.Event)
 				go func() {
 					<-time.After(15 * time.Second)
@@ -55,7 +55,7 @@ func main() {
 			},
 		},
 		Handler: controller.HandlerFunc{
-			AddFunc: func(ctx context.Context, obj interface{}) error {
+			AddFunc: func(_ context.Context, obj interface{}) error {
 				sh, ok := obj.(superHero)
 				if !ok {
 					return nil
@@ -69,12 +69,12 @@ func main() {
 
 				return nil
 			},
-			DeleteFunc: func(ctx context.Context, id string) error {
+			DeleteFunc: func(_ context.Context, id string) error {
 				logger.Infof("%s deleted", id)
 				return nil
 			},
 		},
-		Storage: controller.StorageFunc(func(id string) (interface{}, error) {
+		Storage: controller.StorageFunc(func(_ context.Context, id string) (interface{}, error) {
 			obj, ok := database[id]
 			if !ok {
 				return nil, nil

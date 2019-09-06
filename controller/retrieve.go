@@ -1,6 +1,9 @@
 package controller
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
 // EventKind is the kind of event the Watcher will return.
 type EventKind string
@@ -27,31 +30,31 @@ type Event struct {
 // using a Store.
 type ListerWatcher interface {
 	// List returns a list of all the IDs that want to be processed.
-	List() (ids []string, err error)
+	List(ctx context.Context) (ids []string, err error)
 	// Watch returns a channel that will return the object changes to be processed
 	// as an optimization to not wait for the next List iteration.
-	Watch() (<-chan Event, error)
+	Watch(ctx context.Context) (<-chan Event, error)
 }
 
 // ListerWatcherFunc is a helper type to get a ListerWatcher using
 // directly functions in a struct.
 type ListerWatcherFunc struct {
-	ListFunc  func() (ids []string, err error)
-	WatchFunc func() (<-chan Event, error)
+	ListFunc  func(ctx context.Context) (ids []string, err error)
+	WatchFunc func(ctx context.Context) (<-chan Event, error)
 }
 
 // List satisfies ListerWatcher interface.
-func (l ListerWatcherFunc) List() ([]string, error) {
+func (l ListerWatcherFunc) List(ctx context.Context) ([]string, error) {
 	if l.WatchFunc == nil {
 		return nil, errors.New("list function can't be nil")
 	}
-	return l.ListFunc()
+	return l.ListFunc(ctx)
 }
 
 // Watch satisfies ListerWatcher interface.
-func (l ListerWatcherFunc) Watch() (<-chan Event, error) {
+func (l ListerWatcherFunc) Watch(ctx context.Context) (<-chan Event, error) {
 	if l.WatchFunc == nil {
 		return nil, errors.New("watch function can't be nil")
 	}
-	return l.WatchFunc()
+	return l.WatchFunc(ctx)
 }
