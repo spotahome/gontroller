@@ -4,7 +4,7 @@
 
 # Gontroller [![Build Status][travis-image]][travis-url] [![Go Report Card][goreport-image]][goreport-url] [![GoDoc][godoc-image]][godoc-url]
 
-A Go library to create [feedback loop/control controllers][control-theory], or in other words... a Go library to create controller without Kubernetes.
+A Go library to create [feedback loop/control controllers][control-theory], or in other words... a Go library to create controllers without Kubernetes resources.
 
 ## Current state
 
