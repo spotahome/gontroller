@@ -2,6 +2,7 @@
 
 package controller
 
+import context "context"
 import controller "github.com/spotahome/gontroller/controller"
 import mock "github.com/stretchr/testify/mock"
 
@@ -10,13 +11,13 @@ type ListerWatcher struct {
 	mock.Mock
 }
 
-// List provides a mock function with given fields:
-func (_m *ListerWatcher) List() ([]string, error) {
-	ret := _m.Called()
+// List provides a mock function with given fields: ctx
+func (_m *ListerWatcher) List(ctx context.Context) ([]string, error) {
+	ret := _m.Called(ctx)
 
 	var r0 []string
-	if rf, ok := ret.Get(0).(func() []string); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) []string); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
@@ -24,8 +25,8 @@ func (_m *ListerWatcher) List() ([]string, error) {
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -33,13 +34,13 @@ func (_m *ListerWatcher) List() ([]string, error) {
 	return r0, r1
 }
 
-// Watch provides a mock function with given fields:
-func (_m *ListerWatcher) Watch() (<-chan controller.Event, error) {
-	ret := _m.Called()
+// Watch provides a mock function with given fields: ctx
+func (_m *ListerWatcher) Watch(ctx context.Context) (<-chan controller.Event, error) {
+	ret := _m.Called(ctx)
 
 	var r0 <-chan controller.Event
-	if rf, ok := ret.Get(0).(func() <-chan controller.Event); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) <-chan controller.Event); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(<-chan controller.Event)
@@ -47,8 +48,8 @@ func (_m *ListerWatcher) Watch() (<-chan controller.Event, error) {
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}

@@ -143,7 +143,7 @@ func (c *Controller) Run(ctx context.Context) error {
 	// Run the enqueuers, these are the reconciliation loop (list) and the
 	// event stream (the watcher).
 	go c.reconciliationLoop(ctx)
-	eventStream, err := c.lw.Watch()
+	eventStream, err := c.lw.Watch(ctx)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (c *Controller) reconcile() {
 
 	// List all the required objects
 	startList := time.Now()
-	objectIDs, err := c.lw.List()
+	objectIDs, err := c.lw.List(context.TODO())
 	c.mRecorder.ObserveControllerListLatency(startList, err == nil)
 	if err != nil {
 		c.logger.Errorf("error listing objects: %s", err)
@@ -223,8 +223,9 @@ func (c *Controller) runWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case objectID := <-c.queue:
+			newCtx := context.Background()
 			// process the object.
-			err := c.processObject(objectID)
+			err := c.processObject(newCtx, objectID)
 			// Retry if required based on the result.
 			c.retryIfRequired(objectID, err)
 		}
@@ -249,7 +250,7 @@ func (c *Controller) retryIfRequired(id string, err error) {
 	}
 }
 
-func (c *Controller) processObject(objectID string) (err error) {
+func (c *Controller) processObject(ctx context.Context, objectID string) (err error) {
 	if !c.objectLocker.Acquire(objectID) {
 		// Could not acquire the object processing, other
 		// worker should be processing the same object.
@@ -273,11 +274,11 @@ func (c *Controller) processObject(objectID string) (err error) {
 			c.mRecorder.ObserveControllerHandleLatency(start, metrics.DeleteHandleKind, err == nil)
 		}(time.Now())
 
-		return c.handler.Delete(context.Background(), objectID)
+		return c.handler.Delete(ctx, objectID)
 	case objectStatusPresent:
 		// Get the object data from the storage.
 		startStoreGet := time.Now()
-		object, err := c.storage.Get(objectID)
+		object, err := c.storage.Get(ctx, objectID)
 		c.mRecorder.ObserveControllerStorageGetLatency(startStoreGet, err == nil)
 		if err != nil {
 			return err
@@ -291,7 +292,7 @@ func (c *Controller) processObject(objectID string) (err error) {
 		}
 
 		startHandle := time.Now()
-		err = c.handler.Add(context.Background(), object)
+		err = c.handler.Add(ctx, object)
 		c.mRecorder.ObserveControllerHandleLatency(startHandle, metrics.AddHandleKind, err == nil)
 		return err
 	default:

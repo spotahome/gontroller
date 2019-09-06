@@ -44,18 +44,18 @@ func newController(name string, locker controller.ObjectLocker) (*controller.Con
 		Workers:        2,
 		ObjectLocker:   locker,
 		ListerWatcher: controller.ListerWatcherFunc{
-			ListFunc:  func() ([]string, error) { return []string{"id1", "id2", "id3", "id4"}, nil },
-			WatchFunc: func() (<-chan controller.Event, error) { return nil, nil },
+			ListFunc:  func(_ context.Context) ([]string, error) { return []string{"id1", "id2", "id3", "id4"}, nil },
+			WatchFunc: func(_ context.Context) (<-chan controller.Event, error) { return nil, nil },
 		},
 		Handler: controller.HandlerFunc{
-			AddFunc: func(ctx context.Context, obj interface{}) error {
+			AddFunc: func(_ context.Context, obj interface{}) error {
 				<-time.After(4 * time.Second)
 				logger.Infof("controller %s handled %s", name, obj.(string))
 				return nil
 			},
-			DeleteFunc: func(ctx context.Context, id string) error { return nil },
+			DeleteFunc: func(_ context.Context, id string) error { return nil },
 		},
-		Storage: controller.StorageFunc(func(id string) (interface{}, error) { return id, nil }),
+		Storage: controller.StorageFunc(func(_ context.Context, id string) (interface{}, error) { return id, nil }),
 	})
 }
 

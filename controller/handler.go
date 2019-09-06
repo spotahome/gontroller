@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 )
 
 // Handler is the handler used to handle the received objects by the controller.
@@ -25,10 +26,16 @@ type HandlerFunc struct {
 
 // Add satisfies Handler interface.
 func (h HandlerFunc) Add(ctx context.Context, obj interface{}) error {
+	if h.AddFunc == nil {
+		return errors.New("add function can't be nil")
+	}
 	return h.AddFunc(ctx, obj)
 }
 
 // Delete satisfies Handler interface.
 func (h HandlerFunc) Delete(ctx context.Context, id string) error {
+	if h.DeleteFunc == nil {
+		return errors.New("delete function can't be nil")
+	}
 	return h.DeleteFunc(ctx, id)
 }

@@ -73,7 +73,7 @@ func main() {
 
 func createListeWatcher() controller.ListerWatcher {
 	return &controller.ListerWatcherFunc{
-		ListFunc: func() ([]string, error) {
+		ListFunc: func(_ context.Context) ([]string, error) {
 			randomSleep()
 			return []string{
 				"faked-obj1",
@@ -83,7 +83,7 @@ func createListeWatcher() controller.ListerWatcher {
 				"faked-obj5",
 			}, nil
 		},
-		WatchFunc: func() (<-chan controller.Event, error) {
+		WatchFunc: func(_ context.Context) (<-chan controller.Event, error) {
 			c := make(chan controller.Event)
 			go func() {
 				t := time.NewTicker(10 * time.Millisecond)
@@ -100,7 +100,7 @@ func createListeWatcher() controller.ListerWatcher {
 }
 
 func createStorage() controller.Storage {
-	return controller.StorageFunc(func(id string) (interface{}, error) {
+	return controller.StorageFunc(func(_ context.Context, id string) (interface{}, error) {
 		randomSleep()
 		switch id {
 		// 2nd object fail.

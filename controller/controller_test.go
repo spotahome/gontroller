@@ -47,7 +47,7 @@ func TestController(t *testing.T) {
 			},
 			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
 				// A dummy watcher.
-				mlw.On("Watch", mock.Anything).Return(make(<-chan controller.Event), nil)
+				mlw.On("Watch", mock.Anything, mock.Anything).Return(make(<-chan controller.Event), nil)
 
 				// Mock getting 100 objects to process.
 				objQ := 100
@@ -55,7 +55,7 @@ func TestController(t *testing.T) {
 				for i := 0; i < objQ; i++ {
 					objs[i] = fmt.Sprintf("darknight/batman-%d", i)
 				}
-				mlw.On("List", mock.Anything).Once().Return(objs, nil)
+				mlw.On("List", mock.Anything, mock.Anything).Once().Return(objs, nil)
 
 				rec := callRecorder{}
 				for _, obj := range objs {
@@ -63,7 +63,7 @@ func TestController(t *testing.T) {
 					r := &testObject{
 						ID: obj,
 					}
-					ms.On("Get", obj).Once().Return(r, nil)
+					ms.On("Get", mock.Anything, obj).Once().Return(r, nil)
 
 					// Expect to handle added each object with it's data.
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
@@ -83,7 +83,7 @@ func TestController(t *testing.T) {
 			},
 			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
 				// A dummy watcher.
-				mlw.On("Watch", mock.Anything).Return(make(<-chan controller.Event), nil)
+				mlw.On("Watch", mock.Anything, mock.Anything).Return(make(<-chan controller.Event), nil)
 
 				// Mock getting 100 objects to process.
 				objQ := 100
@@ -99,7 +99,7 @@ func TestController(t *testing.T) {
 					r := &testObject{
 						ID: obj,
 					}
-					ms.On("Get", obj).Once().Return(r, nil)
+					ms.On("Get", mock.Anything, obj).Once().Return(r, nil)
 
 					// Expect to handle added each object with it's data.
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
@@ -119,12 +119,12 @@ func TestController(t *testing.T) {
 			},
 			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
 				// A dummy lister.
-				mlw.On("List", mock.Anything).Once().Return([]string{}, nil)
+				mlw.On("List", mock.Anything, mock.Anything).Once().Return([]string{}, nil)
 
 				// Mock  10 adds, 10 modifies and 10 deletes object events .
 				repQ := 10
 				repC := make(chan controller.Event)
-				mlw.On("Watch", mock.Anything).Return((<-chan controller.Event)(repC), nil)
+				mlw.On("Watch", mock.Anything, mock.Anything).Return((<-chan controller.Event)(repC), nil)
 				// Adds.
 				go func() {
 					time.Sleep(5 * time.Millisecond) // Just in case leave time to the set the mocks.
@@ -164,7 +164,7 @@ func TestController(t *testing.T) {
 				for i := 0; i < repQ; i++ {
 					id := fmt.Sprintf("darknight/batman-add-%d", i)
 					r := &testObject{ID: id}
-					ms.On("Get", id).Once().Return(r, nil)
+					ms.On("Get", mock.Anything, id).Once().Return(r, nil)
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
 						rec.inc()
@@ -177,7 +177,7 @@ func TestController(t *testing.T) {
 				for i := 0; i < repQ; i++ {
 					id := fmt.Sprintf("darknight/batman-mod-%d", i)
 					r := &testObject{ID: id}
-					ms.On("Get", id).Once().Return(r, nil)
+					ms.On("Get", mock.Anything, id).Once().Return(r, nil)
 					mh.On("Add", mock.Anything, r).Once().Return(nil).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
 						rec.inc()
@@ -206,13 +206,13 @@ func TestController(t *testing.T) {
 			},
 			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
 				// List 1 objects (this will work as an add that will slow the watchers).
-				mlw.On("List", mock.Anything).Once().Return([]string{"slow"}, nil)
+				mlw.On("List", mock.Anything, mock.Anything).Once().Return([]string{"slow"}, nil)
 
 				// Guarantee the first event has reached by waiting a bit
 				time.After(10 * time.Millisecond)
 				// Send the same event lots of times, it should be received only once
 				repC := make(chan controller.Event)
-				mlw.On("Watch", mock.Anything).Return((<-chan controller.Event)(repC), nil)
+				mlw.On("Watch", mock.Anything, mock.Anything).Return((<-chan controller.Event)(repC), nil)
 				go func() {
 					for i := 0; i < 5; i++ {
 						repC <- controller.Event{
@@ -225,7 +225,7 @@ func TestController(t *testing.T) {
 				// The checks of the events. We should receive one Get for the first object (the second one is a delete)
 				rec := callRecorder{}
 				r := testObject{ID: "slow"}
-				ms.On("Get", "slow").Once().Return(r, nil).After(30 * time.Millisecond)
+				ms.On("Get", mock.Anything, "slow").Once().Return(r, nil).After(30 * time.Millisecond)
 
 				repQ := 2 // Wait both calls.
 				r = testObject{ID: "slow"}
@@ -255,17 +255,17 @@ func TestController(t *testing.T) {
 			},
 			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
 				// A dummy watcher.
-				mlw.On("Watch", mock.Anything).Return(make(<-chan controller.Event), nil)
+				mlw.On("Watch", mock.Anything, mock.Anything).Return(make(<-chan controller.Event), nil)
 
 				// Mock 2 objects.
 				objs := []string{"obj1", "obj2"}
-				mlw.On("List", mock.Anything).Once().Return(objs, nil)
+				mlw.On("List", mock.Anything, mock.Anything).Once().Return(objs, nil)
 
 				// The checks of the events.
 				rec := callRecorder{}
 				for _, id := range objs {
 					r := &testObject{ID: id}
-					ms.On("Get", id).Once().Return(r, nil)
+					ms.On("Get", mock.Anything, id).Once().Return(r, nil)
 					// Return error to check retries.
 					mh.On("Add", mock.Anything, r).Once().Return(errors.New("wanted error")).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
@@ -285,18 +285,18 @@ func TestController(t *testing.T) {
 			},
 			mock: func(mlw *mcontroller.ListerWatcher, mh *mcontroller.Handler, ms *mcontroller.Storage, finishedC chan struct{}) {
 				// A dummy watcher.
-				mlw.On("Watch", mock.Anything).Return(make(<-chan controller.Event), nil)
+				mlw.On("Watch", mock.Anything, mock.Anything).Return(make(<-chan controller.Event), nil)
 
 				// Mock 2 objects.
 				objs := []string{"obj1", "obj2"}
-				mlw.On("List", mock.Anything).Once().Return(objs, nil)
+				mlw.On("List", mock.Anything, mock.Anything).Once().Return(objs, nil)
 
 				// The checks of the events.
 				rec := callRecorder{}
 				retryFactor := 6 // The times should be (retries  + 1).
 				for _, id := range objs {
 					r := &testObject{ID: id}
-					ms.On("Get", id).Times(retryFactor).Return(r, nil)
+					ms.On("Get", mock.Anything, id).Times(retryFactor).Return(r, nil)
 					// Return error to check retries.
 					mh.On("Add", mock.Anything, r).Times(retryFactor).Return(errors.New("wanted error")).Run(func(_ mock.Arguments) {
 						// If we reach the expected call times then finish.
