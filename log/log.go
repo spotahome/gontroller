@@ -18,10 +18,10 @@ var Dummy = &dummy{}
 
 type dummy struct{}
 
-func (dummy) Infof(format string, args ...interface{})    {}
-func (dummy) Warnf(format string, args ...interface{})    {}
-func (dummy) Errorf(format string, args ...interface{})   {}
-func (dummy) Debugf(format string, args ...interface{})   {}
+func (dummy) Infof(format string, args ...interface{})  {}
+func (dummy) Warnf(format string, args ...interface{})  {}
+func (dummy) Errorf(format string, args ...interface{}) {}
+func (dummy) Debugf(format string, args ...interface{}) {}
 
 // Std satisfies Logger interface using the standard go logger.
 type Std struct {
