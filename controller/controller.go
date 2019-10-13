@@ -57,12 +57,12 @@ func (c *Config) defaults() error {
 	}
 
 	if c.MetricsRecorder == nil {
-		c.Logger.Warningf("controller metrics disabled")
+		c.Logger.Warnf("controller metrics disabled")
 		c.MetricsRecorder = metrics.Dummy
 	}
 
 	if c.Name == "" {
-		c.Logger.Warningf("controller configured without name")
+		c.Logger.Warnf("controller configured without name")
 	}
 
 	if c.ListerWatcher == nil {
@@ -236,7 +236,7 @@ func (c *Controller) retryIfRequired(id string, err error) {
 	retries, ok := c.objectCache.getRetries(id)
 	if err != nil && ok && retries < c.cfg.MaxRetries {
 		// Enqueue again for a new retry.
-		c.logger.Warningf("retrying (%d/%d) due to an error processing object %s: %s", retries+1, c.cfg.MaxRetries, id, err)
+		c.logger.Warnf("retrying (%d/%d) due to an error processing object %s: %s", retries+1, c.cfg.MaxRetries, id, err)
 		c.objectCache.incRetry(id)
 		c.enqueueObject(id)
 		return

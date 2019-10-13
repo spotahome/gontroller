@@ -8,7 +8,7 @@ import (
 // Logger knows how to log messages in the go fmt style.
 type Logger interface {
 	Infof(format string, args ...interface{})
-	Warningf(format string, args ...interface{})
+	Warnf(format string, args ...interface{})
 	Errorf(format string, args ...interface{})
 	Debugf(format string, args ...interface{})
 }
@@ -18,10 +18,10 @@ var Dummy = &dummy{}
 
 type dummy struct{}
 
-func (dummy) Infof(format string, args ...interface{})    {}
-func (dummy) Warningf(format string, args ...interface{}) {}
-func (dummy) Errorf(format string, args ...interface{})   {}
-func (dummy) Debugf(format string, args ...interface{})   {}
+func (dummy) Infof(format string, args ...interface{})  {}
+func (dummy) Warnf(format string, args ...interface{})  {}
+func (dummy) Errorf(format string, args ...interface{}) {}
+func (dummy) Debugf(format string, args ...interface{}) {}
 
 // Std satisfies Logger interface using the standard go logger.
 type Std struct {
@@ -33,8 +33,8 @@ func (s Std) Infof(format string, args ...interface{}) {
 	log.Printf(fmt.Sprintf("[INFO] %s \n", format), args...)
 }
 
-// Warningf satisfies Logger interface.
-func (s Std) Warningf(format string, args ...interface{}) {
+// Warnf satisfies Logger interface.
+func (s Std) Warnf(format string, args ...interface{}) {
 	log.Printf(fmt.Sprintf("[WARN] %s \n", format), args...)
 }
 
